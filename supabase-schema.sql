@@ -191,3 +191,107 @@ end; $$;
 insert into public.gifts(name,icon,price_coins,sort_order) values
 ('وردة','🌹',10,1),('قلب','💖',50,2),('نجمة','⭐',100,3),('تاج','👑',500,4),('صاروخ','🚀',1000,5)
 on conflict do nothing;
+
+
+-- Application control layer: safe RPCs, public design settings, and missing RLS mutations.
+alter table public.app_settings enable row level security;
+drop policy if exists "app settings public read" on public.app_settings;
+create policy "app settings public read" on public.app_settings for select using (true);
+
+drop policy if exists "follows own insert" on public.follows;
+drop policy if exists "follows own delete" on public.follows;
+create policy "follows own insert" on public.follows for insert with check (auth.uid() = follower_id);
+create policy "follows own delete" on public.follows for delete using (auth.uid() = follower_id);
+
+drop policy if exists "blocks own insert" on public.blocks;
+drop policy if exists "blocks own delete" on public.blocks;
+create policy "blocks own insert" on public.blocks for insert with check (auth.uid() = blocker_id);
+create policy "blocks own delete" on public.blocks for delete using (auth.uid() = blocker_id);
+
+drop policy if exists "notifications own update" on public.notifications;
+create policy "notifications own update" on public.notifications for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "recharge own insert" on public.recharge_orders;
+create policy "recharge own insert" on public.recharge_orders for insert
+with check (auth.uid() = user_id and status = 'pending');
+
+drop policy if exists "vip own read" on public.vip_subscriptions;
+create policy "vip own read" on public.vip_subscriptions for select using (auth.uid() = user_id);
+
+-- Replace unsafe direct seat writes with controlled room RPCs.
+drop policy if exists "seats own write" on public.room_seats;
+drop policy if exists "seats public insert" on public.room_seats;
+drop policy if exists "seats public update" on public.room_seats;
+drop policy if exists "seats public delete" on public.room_seats;
+
+create or replace function public.ensure_room_seats(p_room uuid)
+returns void language plpgsql security definer set search_path=public as $$
+declare r public.rooms; n int;
+begin
+  select * into r from public.rooms where id=p_room;
+  if not found then raise exception 'ROOM_NOT_FOUND'; end if;
+  if auth.uid() <> r.host_id then raise exception 'NOT_ALLOWED'; end if;
+  for n in 1..r.max_seats loop
+    insert into public.room_seats(room_id,seat_no) values(p_room,n) on conflict do nothing;
+  end loop;
+end; $$;
+
+create or replace function public.join_room_seat(p_room uuid,p_seat int)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare r public.rooms; s public.room_seats; uid uuid := auth.uid();
+begin
+  if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  select * into r from public.rooms where id=p_room and is_active=true;
+  if not found then raise exception 'ROOM_NOT_FOUND'; end if;
+  if p_seat < 1 or p_seat > r.max_seats then raise exception 'INVALID_SEAT'; end if;
+  perform public.ensure_room_seats(p_room);
+  select * into s from public.room_seats where room_id=p_room and seat_no=p_seat for update;
+  if s.locked and uid <> r.host_id then raise exception 'SEAT_LOCKED'; end if;
+  if s.user_id is not null and s.user_id <> uid then raise exception 'SEAT_TAKEN'; end if;
+  update public.room_seats set user_id=uid, joined_at=now() where room_id=p_room and seat_no=p_seat;
+  return jsonb_build_object('ok',true,'seat',p_seat);
+end; $$;
+
+create or replace function public.leave_room_seat(p_room uuid)
+returns jsonb language plpgsql security definer set search_path=public as $$
+begin
+  if auth.uid() is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  update public.room_seats set user_id=null, joined_at=null, is_muted=false
+  where room_id=p_room and user_id=auth.uid();
+  return jsonb_build_object('ok',true);
+end; $$;
+
+create or replace function public.set_seat_state(p_room uuid,p_seat int,p_locked boolean,p_muted boolean)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare r public.rooms;
+begin
+  select * into r from public.rooms where id=p_room;
+  if not found or r.host_id <> auth.uid() then raise exception 'NOT_ALLOWED'; end if;
+  update public.room_seats set locked=p_locked,is_muted=p_muted
+  where room_id=p_room and seat_no=p_seat;
+  return jsonb_build_object('ok',true);
+end; $$;
+
+create or replace function public.create_room(
+  p_name text,p_title text,p_type text default 'voice',p_privacy text default 'public',
+  p_country text default 'EG',p_cover_url text default null,p_max_seats int default 8
+) returns public.rooms language plpgsql security definer set search_path=public as $$
+declare r public.rooms;
+begin
+  if auth.uid() is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  insert into public.rooms(name,title,host_id,type,privacy,country,cover_url,max_seats)
+  values(p_name,p_title,auth.uid(),p_type,p_privacy,p_country,p_cover_url,p_max_seats)
+  returning * into r;
+  perform public.ensure_room_seats(r.id);
+  return r;
+end; $$;
+
+-- Initial DB-driven design/feature configuration. Admins can replace these values.
+insert into public.app_settings(key,value) values
+('theme', '{"appName":"Voice Rooms","primary":"#7c3aed","accent":"#ec4899","background":"#07070a","card":"#111116","radius":"1.25rem"}'::jsonb),
+('features', '{"rooms":true,"chat":true,"gifts":true,"wallet":true,"vip":true,"follow":true,"livekit":true}'::jsonb),
+('home', '{"heroTitle":"الغرف الصوتية","heroSubtitle":"ادخل غرفة وتحدث مع الآخرين مباشرة","showCreateRoom":true}'::jsonb)
+on conflict (key) do nothing;
+
+alter publication supabase_realtime add table public.notifications;
+alter publication supabase_realtime add table public.app_settings;
