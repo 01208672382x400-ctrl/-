@@ -46,9 +46,18 @@ jobs:
         env:
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
 
-      - uses: android-actions/setup-android@v3
+      - name: Configure preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
+          echo "/usr/local/lib/android/sdk/build-tools/35.0.0" >> "$GITHUB_PATH"
+          test -x /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager || true
+          test -x /usr/local/lib/android/sdk/platform-tools/adb || true
 
-      - run: yes | sdkmanager --licenses || true
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
 
       - name: Build debug APK
         run: cd android && chmod +x gradlew && ./gradlew assembleDebug
