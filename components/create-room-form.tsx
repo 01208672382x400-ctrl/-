@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "../lib/supabase/client";
 const supabase=createClient();
 export default function CreateRoomForm(){
  const [open,setOpen]=useState(false),[name,setName]=useState(""),[title,setTitle]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
