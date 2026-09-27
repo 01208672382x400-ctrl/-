@@ -6,7 +6,7 @@ import SignOut from "@/components/sign-out";
 export default async function Home(){
  const supabase=await createServerClient();
  const [{data:rooms},{data:{user}}]=await Promise.all([
-  supabase.from("rooms").select("id,name,title,type,country,max_seats,is_active,host_id,profiles(display_name,avatar_url)").eq("is_active",true).order("created_at",{ascending:false}).limit(50),
+  supabase.from("rooms").select("id,name,title,type,country,max_seats,is_active,host_id,public_profiles(display_name,avatar_url)").eq("is_active",true).order("created_at",{ascending:false}).limit(50),
   supabase.auth.getUser()
  ]);
  const cfg=await getAppConfig();
