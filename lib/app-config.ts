@@ -1,4 +1,4 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient } from "./supabase/server";
 
 export async function getAppConfig() {
   const supabase = await createServerClient();
