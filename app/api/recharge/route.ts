@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "../../../../lib/supabase/server";
+import { createServerClient } from "../../../lib/supabase/server";
 export async function POST(req:Request){
  const supabase=await createServerClient();const {data:{user}}=await supabase.auth.getUser();if(!user)return NextResponse.json({error:"يجب تسجيل الدخول"},{status:401});
  const b=await req.json().catch(()=>({}));const packageId=String(b.packageId||"");
