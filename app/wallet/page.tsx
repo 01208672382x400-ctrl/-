@@ -1,6 +1,6 @@
 import Link from "next/link";
-import RechargeButton from "@/components/recharge-button";
-import { createServerClient } from "@/lib/supabase/server";
+import RechargeButton from "../../components/recharge-button";
+import { createServerClient } from "../../lib/supabase/server";
 export default async function Wallet(){
  const s=await createServerClient(); const {data:{user}}=await s.auth.getUser();
  if(!user)return <main className="p-8"><Link href="/auth" className="btn-primary">سجل الدخول</Link></main>;
