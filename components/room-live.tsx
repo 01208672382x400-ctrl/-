@@ -1,6 +1,6 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "../lib/supabase/client";
 import { Room,RoomEvent,Track,createLocalTracks } from "livekit-client";
 
 const supabase=createClient();
@@ -33,7 +33,7 @@ export default function RoomLive({roomId,initialSeats}:{roomId:string;initialSea
      })
      .on("postgres_changes",{event:"INSERT",schema:"public",table:"room_messages",filter:"room_id=eq."+roomId},p=>setMessages(x=>[...x,p.new]))
      .subscribe();
-   supabase.from("room_messages").select("id,message,created_at,user_id,profiles(display_name,avatar_url)").eq("room_id",roomId).order("created_at",{ascending:true}).limit(100).then(({data})=>setMessages(data??[]));
+   supabase.from("room_messages").select("id,message,created_at,user_id,public_profiles(display_name,avatar_url)").eq("room_id",roomId).order("created_at",{ascending:true}).limit(100).then(({data})=>setMessages(data??[]));
    return()=>{mounted=false;supabase.removeChannel(ch)};
  },[roomId]);
 
@@ -89,7 +89,7 @@ export default function RoomLive({roomId,initialSeats}:{roomId:string;initialSea
   <section className="grid md:grid-cols-[1.5fr_1fr] gap-4">
    <div className="glass p-4">
     <div className="flex justify-between mb-3"><b>المحادثة</b><div className="flex gap-2">{lk?<button className="btn-ghost" onClick={disconnect}>قطع الصوت</button>:<button className="btn-primary" onClick={connectVoice}>🎤 دخول الصوت</button>}</div></div>
-    <div className="h-80 overflow-auto space-y-2">{messages.map(m=><div key={m.id} className="rounded-xl bg-white/5 p-3"><b>{m.profiles?.display_name??"مستخدم"}</b><div>{m.message}</div></div>)}</div>
+    <div className="h-80 overflow-auto space-y-2">{messages.map(m=><div key={m.id} className="rounded-xl bg-white/5 p-3"><b>{m.public_profiles?.display_name??"مستخدم"}</b><div>{m.message}</div></div>)}</div>
     <div className="flex gap-2 mt-3"><input className="field" value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="اكتب رسالة..."/><button className="btn-primary" onClick={send}>إرسال</button></div>
    </div>
 
