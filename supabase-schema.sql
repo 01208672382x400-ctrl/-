@@ -322,3 +322,33 @@ do $ begin
   if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='notifications') then alter publication supabase_realtime add table public.notifications; end if;
   if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='app_settings') then alter publication supabase_realtime add table public.app_settings; end if;
 end $;
+
+
+-- Security hardening and room lifecycle.
+create or replace view public.public_profiles
+with (security_invoker = true) as
+select id, display_name, avatar_url, country, vip_level, created_at
+from public.profiles;
+
+drop policy if exists "profiles public read" on public.profiles;
+drop policy if exists "profiles own select" on public.profiles;
+create policy "profiles own select" on public.profiles for select using (auth.uid() = id);
+
+create or replace function public.close_room(p_room uuid)
+returns jsonb language plpgsql security definer set search_path=public as $$
+begin
+  if auth.uid() is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  update public.rooms set is_active=false where id=p_room and host_id=auth.uid();
+  if not found then raise exception 'NOT_ALLOWED'; end if;
+  update public.room_seats set user_id=null, joined_at=null where room_id=p_room;
+  return jsonb_build_object('ok',true);
+end; $$;
+revoke execute on function public.close_room(uuid) from public, anon;
+grant execute on function public.close_room(uuid) to authenticated;
+
+do $$
+begin
+ if not exists(select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='room_gifts') then
+   alter publication supabase_realtime add table public.room_gifts;
+ end if;
+end $$;
