@@ -1,7 +1,7 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { Room,RoomEvent,Track } from "livekit-client";
+import { Room,RoomEvent,Track,createLocalTracks } from "livekit-client";
 const supabase=createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 type Seat={room_id:string;seat_no:number;user_id:string|null;is_muted:boolean;locked:boolean;joined_at:string|null};
 export default function RoomLive({roomId,initialSeats}:{roomId:string;initialSeats:Seat[]}){
@@ -12,8 +12,8 @@ export default function RoomLive({roomId,initialSeats}:{roomId:string;initialSea
  async function join(n:number){const {error}=await supabase.rpc("join_room_seat",{p_room:roomId,p_seat:n});if(error)alert(error.message);}
  async function leave(){const {error}=await supabase.rpc("leave_room_seat",{p_room:roomId});if(error)alert(error.message);}
  async function send(){if(!message.trim()||!me)return;const {error}=await supabase.from("room_messages").insert({room_id:roomId,user_id:me,message:message.trim()});if(error)alert(error.message);else setMessage("");}
- async function connectVoice(){const r=await fetch("/api/livekit/token",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({roomId})});const j=await r.json();if(!r.ok){alert(j.error||"تعذر الاتصال");return}const room=new Room();await room.connect(j.url,j.token);setLk(room);room.on(RoomEvent.TrackSubscribed,(track)=>{if(track.kind===Track.Kind.Audio){const el=track.attach();document.body.appendChild(el)}});}
- async function disconnect(){await lk?.disconnect();setLk(null)}
+ async function connectVoice(){if(!me){alert("يجب تسجيل الدخول");return}if(!mySeat){alert("اجلس على مقعد أولاً ثم ادخل الصوت");return}const r=await fetch("/api/livekit/token",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({roomId})});const j=await r.json();if(!r.ok){alert(j.error||"تعذر الاتصال");return}const room=new Room();try{await room.connect(j.url,j.token);const tracks=await createLocalTracks({audio:true,video:false});for(const track of tracks){await room.localParticipant.publishTrack(track)}setLk(room);room.on(RoomEvent.TrackSubscribed,(track)=>{if(track.kind===Track.Kind.Audio){const el=track.attach();el.autoplay=true;document.body.appendChild(el)}})}catch(e){await room.disconnect();alert(e instanceof Error?e.message:"تعذر تشغيل الميكروفون")}}
+ async function disconnect(){if(lk){for(const pub of lk.localParticipant.trackPublications.values()) pub.track?.stop();await lk.disconnect()}setLk(null)}
  return <div className="space-y-5">
   <section className="glass p-4"><div className="flex gap-2 flex-wrap">{seats.map(s=><div key={s.seat_no} className="seat"><div className="text-2xl">{s.user_id?"🎙️":"💺"}</div><div className="text-xs">مقعد {s.seat_no}</div>{s.user_id?<button onClick={s.user_id===me?leave:undefined} className="text-xs text-white/55">{s.user_id===me?"اترك":"مشغول"}</button>:<button onClick={()=>join(s.seat_no)} className="text-xs text-violet-300">اجلس</button>}</div>)}</div></section>
   <section className="grid md:grid-cols-[1.5fr_1fr] gap-4">
