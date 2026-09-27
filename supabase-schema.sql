@@ -72,17 +72,29 @@ alter table public.room_messages enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.recharge_packages enable row level security;
 
+drop policy if exists "profiles public read" on public.profiles;
 create policy "profiles public read" on public.profiles for select using (true);
+drop policy if exists "profiles own update" on public.profiles;
 create policy "profiles own update" on public.profiles for update using (auth.uid() = id);
+drop policy if exists "rooms public read" on public.rooms;
 create policy "rooms public read" on public.rooms for select using (is_active = true or auth.uid() = host_id);
+drop policy if exists "rooms own insert" on public.rooms;
 create policy "rooms own insert" on public.rooms for insert with check (auth.uid() = host_id);
+drop policy if exists "rooms own update" on public.rooms;
 create policy "rooms own update" on public.rooms for update using (auth.uid() = host_id);
+drop policy if exists "rooms own delete" on public.rooms;
 create policy "rooms own delete" on public.rooms for delete using (auth.uid() = host_id);
+drop policy if exists "seats public read" on public.room_seats;
 create policy "seats public read" on public.room_seats for select using (true);
+drop policy if exists "seats own write" on public.room_seats;
 create policy "seats own write" on public.room_seats for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "messages public read" on public.room_messages;
 create policy "messages public read" on public.room_messages for select using (true);
+drop policy if exists "messages own insert" on public.room_messages;
 create policy "messages own insert" on public.room_messages for insert with check (auth.uid() = user_id);
+drop policy if exists "messages own delete" on public.room_messages;
 create policy "messages own delete" on public.room_messages for delete using (auth.uid() = user_id);
+drop policy if exists "recharge public read" on public.recharge_packages;
 create policy "recharge public read" on public.recharge_packages for select using (enabled = true);
 
 create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$
@@ -94,8 +106,10 @@ end; $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
 
-alter publication supabase_realtime add table public.room_messages;
-alter publication supabase_realtime add table public.room_seats;
+do $ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='room_messages') then alter publication supabase_realtime add table public.room_messages; end if;
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='room_seats') then alter publication supabase_realtime add table public.room_seats; end if;
+end $;
 
 create table if not exists public.wallet_transactions (
   id uuid primary key default gen_random_uuid(), user_id uuid not null references public.profiles(id) on delete cascade,
@@ -139,6 +153,7 @@ create index if not exists wallet_transactions_user_created_idx on public.wallet
 create index if not exists notifications_user_created_idx on public.notifications(user_id, created_at desc);
 create index if not exists room_gifts_room_created_idx on public.room_gifts(room_id, created_at desc);
 create index if not exists follows_following_idx on public.follows(following_id);
+create unique index if not exists gifts_name_unique_idx on public.gifts(name);
 
 alter table public.wallet_transactions enable row level security;
 alter table public.gifts enable row level security;
@@ -149,12 +164,19 @@ alter table public.notifications enable row level security;
 alter table public.recharge_orders enable row level security;
 alter table public.vip_subscriptions enable row level security;
 
+drop policy if exists "wallet own read" on public.wallet_transactions;
 create policy "wallet own read" on public.wallet_transactions for select using (auth.uid() = user_id);
+drop policy if exists "gifts public read" on public.gifts;
 create policy "gifts public read" on public.gifts for select using (enabled = true);
+drop policy if exists "room gifts public read" on public.room_gifts;
 create policy "room gifts public read" on public.room_gifts for select using (true);
+drop policy if exists "follows public read" on public.follows;
 create policy "follows public read" on public.follows for select using (true);
+drop policy if exists "blocks own read" on public.blocks;
 create policy "blocks own read" on public.blocks for select using (auth.uid() = blocker_id);
+drop policy if exists "notifications own read" on public.notifications;
 create policy "notifications own read" on public.notifications for select using (auth.uid() = user_id);
+drop policy if exists "recharge own read" on public.recharge_orders;
 create policy "recharge own read" on public.recharge_orders for select using (auth.uid() = user_id);
 create policy "vip own read" on public.vip_subscriptions for select using (auth.uid() = user_id);
 
@@ -193,7 +215,7 @@ end; $;
 
 insert into public.gifts(name,icon,price_coins,sort_order) values
 ('وردة','🌹',10,1),('قلب','💖',50,2),('نجمة','⭐',100,3),('تاج','👑',500,4),('صاروخ','🚀',1000,5)
-on conflict do nothing;
+on conflict (name) do nothing;
 
 
 -- Application control layer: safe RPCs, public design settings, and missing RLS mutations.
@@ -228,12 +250,12 @@ drop policy if exists "seats public update" on public.room_seats;
 drop policy if exists "seats public delete" on public.room_seats;
 
 create or replace function public.ensure_room_seats(p_room uuid)
-returns void language plpgsql security definer set search_path=public as $$
+returns void language plpgsql security definer set search_path=public as $
 declare r public.rooms; n int;
 begin
+  if auth.uid() is null then raise exception 'NOT_AUTHENTICATED'; end if;
   select * into r from public.rooms where id=p_room;
   if not found then raise exception 'ROOM_NOT_FOUND'; end if;
-  if auth.uid() <> r.host_id then raise exception 'NOT_ALLOWED'; end if;
   for n in 1..r.max_seats loop
     insert into public.room_seats(room_id,seat_no) values(p_room,n) on conflict do nothing;
   end loop;
@@ -296,5 +318,7 @@ insert into public.app_settings(key,value) values
 ('home', '{"heroTitle":"الغرف الصوتية","heroSubtitle":"ادخل غرفة وتحدث مع الآخرين مباشرة","showCreateRoom":true}'::jsonb)
 on conflict (key) do nothing;
 
-alter publication supabase_realtime add table public.notifications;
-alter publication supabase_realtime add table public.app_settings;
+do $ begin
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='notifications') then alter publication supabase_realtime add table public.notifications; end if;
+  if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename='app_settings') then alter publication supabase_realtime add table public.app_settings; end if;
+end $;
