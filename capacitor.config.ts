@@ -1,13 +1,15 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, '')
+
 const config: CapacitorConfig = {
   appId: 'com.voicerooms.app',
   appName: 'Voice Rooms',
   webDir: 'capacitor-web',
-  server: process.env.NEXT_PUBLIC_APP_URL
+  server: appUrl
     ? {
-        url: process.env.NEXT_PUBLIC_APP_URL,
-        cleartext: process.env.NEXT_PUBLIC_APP_URL.startsWith('http://'),
+        url: appUrl,
+        cleartext: appUrl.startsWith('http://'),
       }
     : undefined,
   android: {
