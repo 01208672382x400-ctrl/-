@@ -1,5 +1,5 @@
 import "./globals.css";
-import { getAppConfig } from "@/lib/app-config";
+import { getAppConfig } from "../lib/app-config";
 export default async function RootLayout({children}:{children:React.ReactNode}){
  const cfg=await getAppConfig();
  const t=cfg.theme??{};
