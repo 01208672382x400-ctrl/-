@@ -1,8 +1,8 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/client";
 import { Room,RoomEvent,Track,createLocalTracks } from "livekit-client";
-const supabase=createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+const supabase=createClient();
 type Seat={room_id:string;seat_no:number;user_id:string|null;is_muted:boolean;locked:boolean;joined_at:string|null};
 export default function RoomLive({roomId,initialSeats}:{roomId:string;initialSeats:Seat[]}){
  const [seats,setSeats]=useState(initialSeats),[me,setMe]=useState<string|null>(null),[message,setMessage]=useState(""),[messages,setMessages]=useState<any[]>([]);
