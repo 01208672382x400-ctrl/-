@@ -159,34 +159,37 @@ create policy "recharge own read" on public.recharge_orders for select using (au
 create policy "vip own read" on public.vip_subscriptions for select using (auth.uid() = user_id);
 
 create or replace function public.send_gift(p_sender uuid,p_receiver uuid,p_room uuid,p_gift uuid,p_quantity int)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public as $
 declare g public.gifts; total bigint; sender_coins bigint; gift_event uuid;
 begin
-  if p_sender = p_receiver then raise exception 'CANNOT_GIFT_SELF'; end if;
-  if p_quantity < 1 or p_quantity > 100 then raise exception 'INVALID_QUANTITY'; end if;
-  select * into g from public.gifts where id = p_gift and enabled = true;
+  if auth.uid() is null or p_sender <> auth.uid() then raise exception 'NOT_ALLOWED'; end if;
+  if p_sender=p_receiver then raise exception 'CANNOT_GIFT_SELF'; end if;
+  if p_quantity<1 or p_quantity>100 then raise exception 'INVALID_QUANTITY'; end if;
+  if not exists(select 1 from public.rooms where id=p_room and is_active=true) then raise exception 'ROOM_NOT_FOUND'; end if;
+  if not exists(select 1 from public.room_seats where room_id=p_room and user_id=p_receiver) then raise exception 'RECEIVER_NOT_IN_ROOM'; end if;
+  select * into g from public.gifts where id=p_gift and enabled=true;
   if not found then raise exception 'GIFT_NOT_FOUND'; end if;
-  total := g.price_coins * p_quantity;
-  select coins into sender_coins from public.profiles where id = p_sender for update;
-  if sender_coins < total then raise exception 'INSUFFICIENT_COINS'; end if;
-  update public.profiles set coins = coins - total, updated_at = now() where id = p_sender;
-  update public.profiles set diamonds = diamonds + total, updated_at = now() where id = p_receiver;
+  total:=g.price_coins*p_quantity;
+  select coins into sender_coins from public.profiles where id=p_sender for update;
+  if sender_coins<total then raise exception 'INSUFFICIENT_COINS'; end if;
+  update public.profiles set coins=coins-total,updated_at=now() where id=p_sender;
+  update public.profiles set diamonds=diamonds+total,updated_at=now() where id=p_receiver;
   insert into public.room_gifts(room_id,sender_id,receiver_id,gift_id,quantity) values(p_room,p_sender,p_receiver,p_gift,p_quantity) returning id into gift_event;
   insert into public.wallet_transactions(user_id,kind,coins_delta,diamonds_delta,reference_id,note) values
-    (p_sender,'gift_sent',-total,0,gift_event,g.name),(p_receiver,'gift_received',0,total,gift_event,g.name);
-  insert into public.notifications(user_id,type,title,body,data) values
-    (p_receiver,'gift','هدية جديدة','وصلتك هدية '||g.icon||' '||g.name,jsonb_build_object('room_id',p_room,'gift_id',p_gift,'quantity',p_quantity));
+   (p_sender,'gift_sent',-total,0,gift_event,g.name),(p_receiver,'gift_received',0,total,gift_event,g.name);
+  insert into public.notifications(user_id,type,title,body,data) values(p_receiver,'gift','هدية جديدة','وصلتك هدية '||g.icon||' '||g.name,jsonb_build_object('room_id',p_room,'gift_id',p_gift,'quantity',p_quantity));
   return jsonb_build_object('ok',true,'event_id',gift_event,'cost',total);
-end; $$;
+end; $;
 
 create or replace function public.admin_adjust_wallet(p_user uuid,p_coins bigint,p_diamonds bigint,p_note text)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public as $
 begin
-  update public.profiles set coins = greatest(0, coins + p_coins), diamonds = greatest(0, diamonds + p_diamonds), updated_at = now() where id = p_user;
+  if coalesce(auth.role(),'') <> 'service_role' then raise exception 'NOT_ALLOWED'; end if;
+  update public.profiles set coins=greatest(0,coins+p_coins),diamonds=greatest(0,diamonds+p_diamonds),updated_at=now() where id=p_user;
   if not found then raise exception 'USER_NOT_FOUND'; end if;
   insert into public.wallet_transactions(user_id,kind,coins_delta,diamonds_delta,note) values(p_user,'admin_adjustment',p_coins,p_diamonds,p_note);
   return jsonb_build_object('ok',true);
-end; $$;
+end; $;
 
 insert into public.gifts(name,icon,price_coins,sort_order) values
 ('وردة','🌹',10,1),('قلب','💖',50,2),('نجمة','⭐',100,3),('تاج','👑',500,4),('صاروخ','🚀',1000,5)
