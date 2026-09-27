@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createServerClient } from "@/lib/supabase/server";
-import RoomLive from "@/components/room-live";
-import CloseRoomButton from "@/components/close-room-button";
+import { createServerClient } from "../../../lib/supabase/server";
+import RoomLive from "../../../components/room-live";
+import CloseRoomButton from "../../../components/close-room-button";
 export default async function RoomPage({params}:{params:Promise<{id:string}>}){
  const {id}=await params; const s=await createServerClient(); const {data:{user}}=await s.auth.getUser();
  const [{data:room},{data:seats}]=await Promise.all([
