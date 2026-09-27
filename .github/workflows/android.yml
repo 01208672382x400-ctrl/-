@@ -15,7 +15,7 @@ jobs:
         with:
           version: 12.3.4
           run_install: false
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install
       - run: pnpm build
         env:
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
