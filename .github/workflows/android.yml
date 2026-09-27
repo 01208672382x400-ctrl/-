@@ -3,20 +3,26 @@ on:
   workflow_dispatch:
   push:
     branches: ['main']
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - uses: pnpm/action-setup@v4
         with:
           version: 12.3.4
           run_install: false
+
       - run: pnpm install
-      - run: pnpm build
+
+      - name: Build Next.js web app
+        run: pnpm build
         env:
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -28,11 +34,25 @@ jobs:
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
           ADMIN_USER_IDS: ${{ secrets.ADMIN_USER_IDS }}
-      - run: npx cap add android
-      - run: npx cap sync android
+
+      - name: Validate native web shell
+        run: test -f capacitor-web/index.html
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+        env:
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
       - uses: android-actions/setup-android@v3
+
       - run: yes | sdkmanager --licenses || true
-      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: Build debug APK
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+
       - uses: actions/upload-artifact@v4
         with:
           name: voice-rooms-debug-apk
