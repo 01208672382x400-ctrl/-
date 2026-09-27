@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { createServerClient } from "@/lib/supabase/server";
-import { getAppConfig } from "@/lib/app-config";
-import CreateRoomForm from "@/components/create-room-form";
-import SignOut from "@/components/sign-out";
+import { createServerClient } from "../../lib/supabase/server";
+import { getAppConfig } from "../../lib/app-config";
+import CreateRoomForm from "../components/create-room-form";
+import SignOut from "../components/sign-out";
 export default async function Home(){
  const supabase=await createServerClient();
  const [{data:rooms},{data:{user}}]=await Promise.all([
