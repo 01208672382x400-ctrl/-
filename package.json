@@ -30,6 +30,7 @@
     "@supabase/supabase-js": "^2.57.0",
     "livekit-client": "^2.15.0",
     "@capacitor/core": "^7.4.0",
+    "@capacitor/android": "^7.6.9",
     "livekit-server-sdk": "^2.15.0"
   },
   "devDependencies": {
