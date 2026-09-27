@@ -1,6 +1,6 @@
 "use client";
 import {useState} from "react";
-import {createClient} from "@/lib/supabase/client";
+import {createClient} from "../lib/supabase/client";
 const supabase=createClient();
 export default function CloseRoomButton({roomId}:{roomId:string}){
  const [busy,setBusy]=useState(false);
